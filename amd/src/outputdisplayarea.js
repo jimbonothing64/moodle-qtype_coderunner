@@ -43,9 +43,12 @@ import {get_string as getLangString} from 'core/str';
 
 
 const ENTER_KEY = 13;
+
 const INPUT_INTERRUPT = 42;
 const RESULT_SUCCESS = 15;
 const INPUT_CLASS = 'coderunner-run-input';
+const DEFAULT_DISPLAY_COLOUR = '#eff';
+const ERROR_DISPLAY_COLOUR = '#faa';
 const JSON_DISPLAY_PROPS = ['returncode', 'stdout', 'stderr', 'files'];
 
 
@@ -160,6 +163,8 @@ class OutputDisplayArea {
     clearDisplay() {
         this.textDisplay.innerHTML = "";
         this.imageDisplay.innerHTML = "";
+        this.textDisplay.style.backgroundColor = DEFAULT_DISPLAY_COLOUR;
+        this.imageDisplay.style.backgroundColor = DEFAULT_DISPLAY_COLOUR;
     }
 
     /**
@@ -199,6 +204,9 @@ class OutputDisplayArea {
      */
     displayJson(response) {
         const result = this.validateJson(response.output);
+        if (result === null) {
+            return;
+        } // Invalid JSON response received from wrapper.
 
         let text = result.stdout;
 
@@ -225,31 +233,43 @@ class OutputDisplayArea {
     }
 
     /**
+     * Display an error message, with red background. 
+     * Typically, these would be caused by the wrapper.
+     * But they can also happen when the webservice responds with an error.
+     * @param {string} error_msg to be displayed.
+     */
+    displayError(error_msg) {
+        this.textDisplay.style.backgroundColor = ERROR_DISPLAY_COLOUR;
+        this.textDisplay.innerText = error_msg;
+    }
+
+    /**
      * Validate JSON to display, make sure it is valid json and has required fields.
+     * Return null if malformed JSON or or required fields are missing.
      * @param {string} jsonString string of JSON to be displayed.
-     * @returns {object} JSON as object
+     * @returns {object | null} JSON as object, or null if invalid.
      */
     validateJson(jsonString) {
         let result = null;
         try {
             result = JSON.parse(jsonString);
         } catch (e) {
-            window.alert(
-                `Error parsing display JSON output: \n` +
-                `'${jsonString}\n'` +
-                `Error Msg: \n` +
-                ` ${e.message} \n` +
-                `The question author must fix this!`
+            this.displayError(
+                `Error parsing JSON output from wrapper: \n` +
+                `${jsonString}\n` +
+                `JSON Parse Error(s): \n` +
+                `${e.message} \n`
             );
+            return null;
         }
 
         const missing = missingProperties(result, JSON_DISPLAY_PROPS);
         if (missing.length > 0) {
-            window.alert(
+            this.displayError(
                 `Display JSON (in response.result) is missing the following fields: \n` +
-                `${missing.join()} \n` +
-                `The question author must fix this!`
+                `${missing.join()} \n`
             );
+            return null;
         }
         return result;
     }
@@ -291,7 +311,7 @@ class OutputDisplayArea {
         } else if (this.mode === 'text') {
             this.displayText(response);
         } else {
-            throw Error(`Invalid outputMode given: "${this.mode}"`);
+            this.displayError('Invalid UI parameter output_display_mode: ' + this.mode);
         }
     }
 
@@ -323,7 +343,7 @@ class OutputDisplayArea {
                 this.display(response);
             },
             fail: (error) => {
-                alert(error.message);
+                this.displayError(error.message);
             }
         }]);
     }
@@ -381,7 +401,7 @@ class OutputDisplayArea {
                 this.imageDisplay.append(image);
                 numImages += 1;
             } else {
-                window.alert(`Could not read filename correctly: "${fname}"`);
+                this.imageDisplay('Cannot display image, unsupported file type for image: ' + fname);
             }
         }
         return numImages;
